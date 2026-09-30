@@ -76,12 +76,20 @@ GEMINI_MODEL=gemini-3.8-flash
 REDIS_URL=redis://redis:6379/0
 RATE_LIMIT_REQUESTS=60
 RATE_LIMIT_WINDOW_SECONDS=60
+CACHE_ENABLED=True
+CACHE_TTL_SECONDS=300
 ```
 
 The default model is `gemini-3.8-flash`. Never commit the local `.env` file.
 The default rate limit is 60 generation requests per 60-second fixed window for
 each PromptGate client API key. If Redis is unavailable, generation requests
 fail explicitly with HTTP 503 instead of bypassing the limit.
+
+Successful generation responses are cached in Redis for 300 seconds by
+default. Cache entries are isolated by PromptGate API-key UUID, provider, and
+model, and use a SHA-256 prompt digest instead of the raw prompt. Cache read or
+write failures fall back to the normal provider flow because caching is an
+optimization; rate limiting remains fail-closed.
 
 ## Generate text
 
@@ -111,15 +119,33 @@ Example response:
     "output_tokens": 12,
     "total_tokens": 20
   },
-  "latency_ms": 340
+  "latency_ms": 340,
+  "cached": false
 }
 ```
 
 PromptGate stores the request ID, client API-key reference, provider/model,
 token counts, latency, status, and creation time for completed provider calls.
-Raw prompts, generated outputs, raw API keys, and provider exception messages
-are not stored. Requests over the limit return HTTP 429 with a `Retry-After`
-header and do not call Gemini.
+Raw prompts, raw API keys, and provider exception messages are not persisted.
+Successful generated output may be stored temporarily in Redis for the cache
+TTL. Cache hits receive a fresh request ID, report `cached: true`, record zero
+provider tokens and latency, and do not call Gemini. Requests over the limit
+return HTTP 429 with a `Retry-After` header and use neither cache nor Gemini.
+
+## API documentation
+
+- OpenAPI schema: `GET /api/schema/`
+- Swagger UI: `GET /api/docs/`
+
+The schema documents registration, JWT tokens, PromptGate API-key management,
+and text generation, including cache and usage metadata.
+
+## Continuous integration
+
+GitHub Actions runs on pushes and pull requests. It installs dependencies with
+PostgreSQL and Redis service containers, then runs the automated tests, Django
+system checks, and migration drift check. CI does not require a Gemini API key,
+and tests mock all provider calls.
 
 ## Tests
 

@@ -17,6 +17,7 @@ class GenerationResult:
     request_id: str
     usage: TokenUsage = field(default_factory=TokenUsage)
     latency_ms: int = 0
+    cached: bool = False
 
 
 class LLMProvider(ABC):

@@ -19,6 +19,14 @@ def rate_limiter():
         yield limiter
 
 
+@pytest.fixture(autouse=True)
+def response_cache():
+    cache = Mock()
+    cache.get.return_value = None
+    with patch("gateway.services.get_response_cache", return_value=cache):
+        yield cache
+
+
 @pytest.fixture
 def gateway_credentials(db):
     user = User.objects.create_user(

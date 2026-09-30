@@ -20,6 +20,8 @@ GEMINI_TIMEOUT_MS = 30_000
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 RATE_LIMIT_REQUESTS = env.int("RATE_LIMIT_REQUESTS", default=60)
 RATE_LIMIT_WINDOW_SECONDS = env.int("RATE_LIMIT_WINDOW_SECONDS", default=60)
+CACHE_ENABLED = env.bool("CACHE_ENABLED", default=True)
+CACHE_TTL_SECONDS = env.int("CACHE_TTL_SECONDS", default=300)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -29,6 +31,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
     "accounts",
     "gateway",
     "health",
@@ -97,4 +100,13 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "PromptGate API",
+    "DESCRIPTION": "Authenticated API gateway for Google Gemini generation.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
 }

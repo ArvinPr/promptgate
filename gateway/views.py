@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema
 
 from gateway import services
 from gateway.authentication import APIKeyAuthentication
@@ -20,6 +21,16 @@ class GenerateView(APIView):
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Generate text",
+        description=(
+            "Generate text through the configured provider. Authenticate with "
+            "`Authorization: Api-Key <promptgate-client-api-key>`."
+        ),
+        request=GenerateRequestSerializer,
+        responses={200: GenerateResponseSerializer},
+        tags=["Generation"],
+    )
     def post(self, request):
         request_serializer = GenerateRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)

@@ -14,6 +14,9 @@ environ.Env.read_env(BASE_DIR / ".env")
 SECRET_KEY = env("SECRET_KEY", default="unsafe-development-key")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.8-flash")
+GEMINI_TIMEOUT_MS = 30_000
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -24,6 +27,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "accounts",
+    "gateway",
     "health",
 ]
 

@@ -1,12 +1,12 @@
 # PromptGate
 
 PromptGate is a production-style backend built with Django REST Framework. It
-provides the foundation for an AI gateway that will integrate with Gemini in a
-later stage.
+provides an authenticated AI gateway backed by Google Gemini.
 
-The current foundation includes PostgreSQL-backed Django, a health endpoint,
-and Docker services for the application, PostgreSQL, and Redis. Redis is
-available as infrastructure only and is not used by the application yet.
+The current foundation includes PostgreSQL-backed Django, JWT account
+authentication, PromptGate client API keys, a Gemini generation endpoint, and
+Docker services for the application, PostgreSQL, and Redis. Redis is available
+as infrastructure only and is not used by the application yet.
 
 ## Requirements
 
@@ -65,6 +65,43 @@ The API is available at `http://localhost:8000`, and its health endpoint is
    python manage.py migrate
    python manage.py runserver
    ```
+
+## Gemini configuration
+
+Set the provider credentials and model in `.env`:
+
+```env
+GEMINI_API_KEY=your-google-gemini-api-key
+GEMINI_MODEL=gemini-3.8-flash
+```
+
+The default model is `gemini-3.8-flash`. Never commit the local `.env` file.
+
+## Generate text
+
+Authenticate generation requests with a PromptGate client API key. The raw key
+is returned only when it is created through `POST /api/api-keys/`.
+
+```http
+POST /api/v1/generate/
+Authorization: Api-Key <promptgate-client-api-key>
+Content-Type: application/json
+
+{
+  "prompt": "Explain database indexing simply."
+}
+```
+
+Example response:
+
+```json
+{
+  "output": "An index is like a book's table of contents...",
+  "provider": "gemini",
+  "model": "gemini-3.8-flash",
+  "request_id": "provider-request-id"
+}
+```
 
 ## Tests
 

@@ -5,8 +5,8 @@ provides an authenticated AI gateway backed by Google Gemini.
 
 The current foundation includes PostgreSQL-backed Django, JWT account
 authentication, PromptGate client API keys, a Gemini generation endpoint, and
-Docker services for the application, PostgreSQL, and Redis. Redis is available
-as infrastructure only and is not used by the application yet.
+Docker services for the application, PostgreSQL, and Redis. Generation usage is
+recorded in PostgreSQL, and Redis enforces per-API-key request limits.
 
 ## Requirements
 
@@ -73,9 +73,15 @@ Set the provider credentials and model in `.env`:
 ```env
 GEMINI_API_KEY=your-google-gemini-api-key
 GEMINI_MODEL=gemini-3.8-flash
+REDIS_URL=redis://redis:6379/0
+RATE_LIMIT_REQUESTS=60
+RATE_LIMIT_WINDOW_SECONDS=60
 ```
 
 The default model is `gemini-3.8-flash`. Never commit the local `.env` file.
+The default rate limit is 60 generation requests per 60-second fixed window for
+each PromptGate client API key. If Redis is unavailable, generation requests
+fail explicitly with HTTP 503 instead of bypassing the limit.
 
 ## Generate text
 
@@ -99,9 +105,21 @@ Example response:
   "output": "An index is like a book's table of contents...",
   "provider": "gemini",
   "model": "gemini-3.8-flash",
-  "request_id": "provider-request-id"
+  "request_id": "gateway-request-id",
+  "usage": {
+    "input_tokens": 8,
+    "output_tokens": 12,
+    "total_tokens": 20
+  },
+  "latency_ms": 340
 }
 ```
+
+PromptGate stores the request ID, client API-key reference, provider/model,
+token counts, latency, status, and creation time for completed provider calls.
+Raw prompts, generated outputs, raw API keys, and provider exception messages
+are not stored. Requests over the limit return HTTP 429 with a `Retry-After`
+header and do not call Gemini.
 
 ## Tests
 

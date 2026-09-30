@@ -21,6 +21,11 @@ def test_gemini_provider_calls_sdk_and_normalizes_response(client_class):
     client.models.generate_content.return_value = SimpleNamespace(
         text="PromptGate OK",
         response_id="gemini-request-123",
+        usage_metadata=SimpleNamespace(
+            prompt_token_count=7,
+            candidates_token_count=3,
+            total_token_count=10,
+        ),
     )
 
     result = GeminiProvider().generate("Reply briefly")
@@ -29,6 +34,9 @@ def test_gemini_provider_calls_sdk_and_normalizes_response(client_class):
     assert result.provider == "gemini"
     assert result.model == "gemini-test"
     assert result.request_id == "gemini-request-123"
+    assert result.usage.input_tokens == 7
+    assert result.usage.output_tokens == 3
+    assert result.usage.total_tokens == 10
     client.models.generate_content.assert_called_once_with(
         model="gemini-test",
         contents="Reply briefly",

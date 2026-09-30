@@ -17,6 +17,9 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.8-flash")
 GEMINI_TIMEOUT_MS = 30_000
+REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
+RATE_LIMIT_REQUESTS = env.int("RATE_LIMIT_REQUESTS", default=60)
+RATE_LIMIT_WINDOW_SECONDS = env.int("RATE_LIMIT_WINDOW_SECONDS", default=60)
 
 INSTALLED_APPS = [
     "django.contrib.admin",

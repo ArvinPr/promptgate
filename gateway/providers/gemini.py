@@ -6,7 +6,7 @@ from django.conf import settings
 from google import genai
 from google.genai import errors, types
 
-from gateway.providers.base import GenerationResult, LLMProvider
+from gateway.providers.base import GenerationResult, LLMProvider, TokenUsage
 from gateway.providers.exceptions import (
     ProviderConfigurationError,
     ProviderRequestError,
@@ -41,6 +41,7 @@ class GeminiProvider(LLMProvider):
                 )
                 output = response.text
                 request_id = getattr(response, "response_id", None) or uuid.uuid4().hex
+                usage_metadata = getattr(response, "usage_metadata", None)
         except Exception as exc:
             raise self._map_exception(exc) from exc
 
@@ -52,7 +53,24 @@ class GeminiProvider(LLMProvider):
             provider=self.provider_name,
             model=self.model,
             request_id=request_id,
+            usage=TokenUsage(
+                input_tokens=self._safe_token_count(
+                    getattr(usage_metadata, "prompt_token_count", None)
+                ),
+                output_tokens=self._safe_token_count(
+                    getattr(usage_metadata, "candidates_token_count", None)
+                ),
+                total_tokens=self._safe_token_count(
+                    getattr(usage_metadata, "total_token_count", None)
+                ),
+            ),
         )
+
+    @staticmethod
+    def _safe_token_count(value):
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+        return None
 
     @staticmethod
     def _map_exception(exc: Exception) -> ProviderRequestError:

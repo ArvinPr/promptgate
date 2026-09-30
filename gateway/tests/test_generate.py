@@ -11,6 +11,7 @@ from gateway.models import GenerationUsage
 from gateway.providers.base import GenerationResult, TokenUsage
 from gateway.providers.exceptions import ProviderRequestError
 from gateway.rate_limits import RateLimitExceeded, RateLimitServiceError
+from gateway.response_cache import CachedGeneration, CacheServiceError
 
 
 @pytest.mark.django_db
@@ -106,9 +107,12 @@ def test_generate_records_usage_and_returns_normalized_response(
     api_key_client,
     gateway_credentials,
     rate_limiter,
+    response_cache,
 ):
     _, api_key, _ = gateway_credentials
     provider = Mock()
+    provider.provider_name = "gemini"
+    provider.model = "gemini-test"
     provider.generate.return_value = GenerationResult(
         output="Database indexes are lookup shortcuts.",
         provider="gemini",
@@ -147,6 +151,7 @@ def test_generate_records_usage_and_returns_normalized_response(
             "total_tokens": 13,
         },
         "latency_ms": 12,
+        "cached": False,
     }
     provider.generate.assert_called_once_with("Explain database indexes.")
     rate_limiter.check.assert_called_once_with(api_key.pk)
@@ -162,6 +167,24 @@ def test_generate_records_usage_and_returns_normalized_response(
     assert usage.latency_ms == 12
     assert usage.status == GenerationUsage.Status.SUCCEEDED
     assert usage.error_category == ""
+    assert usage.cache_hit is False
+    response_cache.get.assert_called_once_with(
+        api_key.pk,
+        "gemini",
+        "gemini-test",
+        "Explain database indexes.",
+    )
+    response_cache.set.assert_called_once_with(
+        api_key.pk,
+        "gemini",
+        "gemini-test",
+        "Explain database indexes.",
+        CachedGeneration(
+            output="Database indexes are lookup shortcuts.",
+            provider="gemini",
+            model="gemini-test",
+        ),
+    )
 
 
 @pytest.mark.django_db
@@ -209,6 +232,7 @@ def test_generate_assigns_a_unique_request_id_to_every_provider_call(
 def test_provider_failure_is_recorded_with_safe_metadata(
     api_key_client,
     gateway_credentials,
+    response_cache,
 ):
     _, api_key, _ = gateway_credentials
     provider = Mock()
@@ -254,7 +278,9 @@ def test_provider_failure_is_recorded_with_safe_metadata(
     assert usage.latency_ms == 25
     assert usage.status == GenerationUsage.Status.FAILED
     assert usage.error_category == "provider_unavailable"
+    assert usage.cache_hit is False
     assert "sensitive" not in str(usage.__dict__).lower()
+    response_cache.set.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -303,6 +329,7 @@ def test_rate_limit_allows_request_below_threshold(api_key_client, rate_limiter)
 def test_rate_limit_blocks_request_without_calling_provider(
     api_key_client,
     rate_limiter,
+    response_cache,
 ):
     rate_limiter.check.side_effect = RateLimitExceeded(17)
 
@@ -323,6 +350,8 @@ def test_rate_limit_blocks_request_without_calling_provider(
     }
     assert response.headers["Retry-After"] == "17"
     get_provider.assert_not_called()
+    response_cache.get.assert_not_called()
+    response_cache.set.assert_not_called()
     assert not GenerationUsage.objects.exists()
 
 
@@ -330,6 +359,7 @@ def test_rate_limit_blocks_request_without_calling_provider(
 def test_redis_failure_returns_controlled_error_without_calling_provider(
     api_key_client,
     rate_limiter,
+    response_cache,
 ):
     rate_limiter.check.side_effect = RateLimitServiceError(
         "Raw Redis details must not escape"
@@ -351,4 +381,126 @@ def test_redis_failure_returns_controlled_error_without_calling_provider(
     }
     assert "raw redis" not in response.content.decode().lower()
     get_provider.assert_not_called()
+    response_cache.get.assert_not_called()
+    response_cache.set.assert_not_called()
     assert not GenerationUsage.objects.exists()
+
+
+@pytest.mark.django_db
+def test_cache_hit_skips_provider_and_uses_fresh_request_ids(
+    api_key_client,
+    gateway_credentials,
+    response_cache,
+):
+    _, api_key, _ = gateway_credentials
+    response_cache.get.return_value = CachedGeneration(
+        output="Cached output",
+        provider="gemini",
+        model="gemini-test",
+    )
+    provider = Mock()
+    provider.provider_name = "gemini"
+    provider.model = "gemini-test"
+
+    with patch("gateway.services.get_provider", return_value=provider):
+        first_response = api_key_client.post(
+            reverse("generate"),
+            {"prompt": "Cache me"},
+            format="json",
+        )
+        second_response = api_key_client.post(
+            reverse("generate"),
+            {"prompt": "Cache me"},
+            format="json",
+        )
+
+    assert first_response.status_code == status.HTTP_200_OK
+    assert second_response.status_code == status.HTTP_200_OK
+    assert first_response.json()["cached"] is True
+    assert second_response.json()["cached"] is True
+    assert first_response.json()["output"] == "Cached output"
+    assert first_response.json()["usage"] == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+    }
+    assert first_response.json()["latency_ms"] == 0
+    assert first_response.json()["request_id"] != second_response.json()["request_id"]
+    provider.generate.assert_not_called()
+    response_cache.set.assert_not_called()
+
+    usages = GenerationUsage.objects.order_by("created_at")
+    assert usages.count() == 2
+    assert {usage.request_id for usage in usages} == {
+        first_response.json()["request_id"],
+        second_response.json()["request_id"],
+    }
+    assert all(usage.api_key == api_key for usage in usages)
+    assert all(usage.cache_hit for usage in usages)
+    assert all(usage.total_tokens == 0 for usage in usages)
+
+
+@pytest.mark.django_db
+def test_cache_read_failure_falls_back_to_provider(
+    api_key_client,
+    response_cache,
+):
+    response_cache.get.side_effect = CacheServiceError(
+        "Raw Redis details must not escape"
+    )
+    response_cache.set.side_effect = CacheServiceError(
+        "Raw Redis details must not escape"
+    )
+    provider = Mock()
+    provider.provider_name = "gemini"
+    provider.model = "gemini-test"
+    provider.generate.return_value = GenerationResult(
+        output="Provider output",
+        provider="gemini",
+        model="gemini-test",
+        request_id="provider-request-id",
+    )
+
+    with patch("gateway.services.get_provider", return_value=provider):
+        response = api_key_client.post(
+            reverse("generate"),
+            {"prompt": "Hello"},
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["output"] == "Provider output"
+    assert response.json()["cached"] is False
+    assert "redis" not in response.content.decode().lower()
+    provider.generate.assert_called_once_with("Hello")
+    assert GenerationUsage.objects.get().cache_hit is False
+
+
+@pytest.mark.django_db
+def test_cache_write_failure_does_not_fail_successful_provider_response(
+    api_key_client,
+    response_cache,
+):
+    response_cache.set.side_effect = CacheServiceError(
+        "Raw Redis details must not escape"
+    )
+    provider = Mock()
+    provider.provider_name = "gemini"
+    provider.model = "gemini-test"
+    provider.generate.return_value = GenerationResult(
+        output="Provider output",
+        provider="gemini",
+        model="gemini-test",
+        request_id="provider-request-id",
+    )
+
+    with patch("gateway.services.get_provider", return_value=provider):
+        response = api_key_client.post(
+            reverse("generate"),
+            {"prompt": "Hello"},
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["cached"] is False
+    assert "redis" not in response.content.decode().lower()

@@ -22,6 +22,7 @@ class GenerationUsage(models.Model):
     latency_ms = models.PositiveIntegerField()
     status = models.CharField(max_length=10, choices=Status.choices)
     error_category = models.CharField(max_length=50, blank=True)
+    cache_hit = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

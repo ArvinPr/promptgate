@@ -27,3 +27,4 @@ class GenerateResponseSerializer(serializers.Serializer):
     request_id = serializers.CharField()
     usage = TokenUsageSerializer()
     latency_ms = serializers.IntegerField(min_value=0)
+    cached = serializers.BooleanField()

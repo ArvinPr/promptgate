@@ -1,7 +1,22 @@
+from unittest.mock import Mock, patch
+
 import pytest
 from rest_framework.test import APIClient
 
 from accounts.models import APIKey, User
+from gateway.rate_limits import RateLimitStatus
+
+
+@pytest.fixture(autouse=True)
+def rate_limiter():
+    limiter = Mock()
+    limiter.check.return_value = RateLimitStatus(
+        limit=60,
+        remaining=59,
+        retry_after_seconds=60,
+    )
+    with patch("gateway.views.get_rate_limiter", return_value=limiter):
+        yield limiter
 
 
 @pytest.fixture

@@ -249,7 +249,7 @@ The test suite mocks provider and Redis behavior, so it does not consume Gemini 
 docker compose run --rm web pytest
 ```
 
-The current suite contains 54 automated tests. Additional verification commands are:
+The current suite contains 55 automated tests. Additional verification commands are:
 
 ```bash
 docker compose run --rm web python manage.py check
